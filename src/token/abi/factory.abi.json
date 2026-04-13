@@ -1,0 +1,25 @@
+[
+  {
+    "type": "event",
+    "name": "TokenCreated",
+    "inputs": [
+      { "name": "tokenAddress", "type": "address", "indexed": true },
+      { "name": "bondingCurve", "type": "address", "indexed": true },
+      { "name": "creator", "type": "address", "indexed": true },
+      { "name": "raiseToken", "type": "address", "indexed": false },
+      { "name": "name", "type": "string", "indexed": false },
+      { "name": "symbol", "type": "string", "indexed": false }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "TokenCreated",
+    "inputs": [
+      { "name": "tokenAddress", "type": "address", "indexed": true },
+      { "name": "bondingCurve", "type": "address", "indexed": true },
+      { "name": "name", "type": "string", "indexed": false },
+      { "name": "symbol", "type": "string", "indexed": false },
+      { "name": "creator", "type": "address", "indexed": true }
+    ]
+  }
+]

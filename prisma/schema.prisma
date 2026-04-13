@@ -1,0 +1,55 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id                  Int                              @id @default(autoincrement())
+  walletAddress       String                           @unique
+  nonce               String?
+  lastLoginAt         DateTime?
+  createdAt           DateTime                         @default(now())
+  updatedAt           DateTime                         @updatedAt
+}
+
+model Token {
+  id                  Int                              @id @default(autoincrement())
+  tokenAddress        String                           @unique
+  bondingCurve        String                           @unique
+  creatorAddress      String
+  raiseToken          String
+  raiseAsset          RaiseToken                       @relation(fields: [raiseToken], references: [tokenAddress])
+  targetValue         String                           @default("0")
+  name                String
+  symbol              String
+  createdAt           DateTime                         @default(now())
+  updatedAt           DateTime                         @updatedAt
+}
+
+model RaiseToken {
+  id                  Int                              @id @default(autoincrement())
+  tokenAddress        String                           @unique
+  name                String
+  symbol              String
+  image               String
+  createdAt           DateTime                         @default(now())
+  updatedAt           DateTime                         @updatedAt
+  tokens              Token[]
+}
+
+model RaiseValue {
+  id                  Int                              @id @default(autoincrement())
+  value               Float
+  symbol              String
+  createdAt           DateTime                         @default(now())
+  updatedAt           DateTime                         @updatedAt
+}
