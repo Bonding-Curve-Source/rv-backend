@@ -1,0 +1,16 @@
+services:
+  be-bonding:
+    image: ghcr.io/tungxng/be:latest
+    platform: linux/amd64
+    container_name: be-bonding
+    ports:
+      - "3005:3005"
+    env_file:
+      - ./.env
+    networks:
+      - bonding-net
+
+networks:
+  bonding-net:
+    name: bonding-net
+    driver: bridge
