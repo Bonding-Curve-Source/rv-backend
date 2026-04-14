@@ -1,9 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Contract, JsonRpcProvider } from 'ethers';
+import { Contract } from 'ethers';
 import { PrismaService } from 'nestjs-prisma';
 
 import { factoryAbi } from './abi/factory.abi';
+import { collectRpcUrls, withJsonRpcFailover } from './rpc-provider.util';
 
 @Injectable()
 export class TokenService {
@@ -16,6 +17,20 @@ export class TokenService {
     private readonly prismaService: PrismaService,
     private readonly configService: ConfigService,
   ) {}
+
+  private chainId(): number | undefined {
+    const raw = this.configService.get<string | number>('CHAIN_ID');
+    if (raw === undefined || raw === '') return undefined;
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : undefined;
+  }
+
+  private rpcUrls(): string[] {
+    return collectRpcUrls(
+      this.configService.get<string>('RPC_URL'),
+      this.configService.get<string>('RPC_BACKUP_URL'),
+    );
+  }
 
   private async enrichRaiseTokenMetadata(raiseToken: string): Promise<void> {
     const r = raiseToken.toLowerCase();
@@ -35,32 +50,33 @@ export class TokenService {
       return;
     }
 
-    const rpcUrl = this.configService.get<string>('RPC_URL');
-    if (!rpcUrl) return;
+    const urls = this.rpcUrls();
+    if (urls.length === 0) return;
 
-    const provider = new JsonRpcProvider(rpcUrl);
     const abi = [
       'function symbol() view returns (string)',
       'function name() view returns (string)',
     ];
     try {
-      const c = new Contract(r, abi, provider);
-      const symbol: string = await c.symbol();
-      let name: string;
-      try {
-        name = await c.name();
-      } catch {
-        name = symbol;
-      }
-      const nameTrim = name && String(name).trim();
-      await prisma.raiseToken.update({
-        where: { tokenAddress: r },
-        data: {
-          symbol: String(symbol).slice(0, 64),
-          name: nameTrim
-            ? String(nameTrim).slice(0, 128)
-            : String(symbol).slice(0, 128),
-        },
+      await withJsonRpcFailover(urls, this.chainId(), async (provider) => {
+        const c = new Contract(r, abi, provider);
+        const symbol: string = await c.symbol();
+        let name: string;
+        try {
+          name = await c.name();
+        } catch {
+          name = symbol;
+        }
+        const nameTrim = name && String(name).trim();
+        await prisma.raiseToken.update({
+          where: { tokenAddress: r },
+          data: {
+            symbol: String(symbol).slice(0, 64),
+            name: nameTrim
+              ? String(nameTrim).slice(0, 128)
+              : String(symbol).slice(0, 128),
+          },
+        });
       });
     } catch (e) {
       this.logger.warn(
@@ -135,36 +151,37 @@ export class TokenService {
    * hoặc decode listener lệch.
    */
   async syncRaiseTokenFromChain(tokenAddress: string): Promise<void> {
-    const rpcUrl = this.configService.get<string>('RPC_URL');
+    const urls = this.rpcUrls();
     const factoryAddress = this.configService.get<string>('FACTORY_ADDRESS');
-    if (!rpcUrl || !factoryAddress) return;
+    if (!urls.length || !factoryAddress) return;
 
-    const provider = new JsonRpcProvider(rpcUrl);
-    const contract = new Contract(factoryAddress, factoryAbi, provider);
     try {
-      const info = (await contract.getTokenInfo(tokenAddress)) as {
-        raiseToken?: string;
-      };
-      const raise = String(info.raiseToken).toLowerCase();
-      if (!raise) return;
+      await withJsonRpcFailover(urls, this.chainId(), async (provider) => {
+        const contract = new Contract(factoryAddress, factoryAbi, provider);
+        const info = (await contract.getTokenInfo(tokenAddress)) as {
+          raiseToken?: string;
+        };
+        const raise = String(info.raiseToken).toLowerCase();
+        if (!raise) return;
 
-      const prisma = this.prismaService as any;
-      await prisma.raiseToken.upsert({
-        where: { tokenAddress: raise },
-        create: {
-          tokenAddress: raise,
-          name: 'Unknown raise asset',
-          symbol: '???',
-          image: '',
-        },
-        update: {},
-      });
+        const prisma = this.prismaService as any;
+        await prisma.raiseToken.upsert({
+          where: { tokenAddress: raise },
+          create: {
+            tokenAddress: raise,
+            name: 'Unknown raise asset',
+            symbol: '???',
+            image: '',
+          },
+          update: {},
+        });
 
-      await this.enrichRaiseTokenMetadata(raise);
+        await this.enrichRaiseTokenMetadata(raise);
 
-      await prisma.token.updateMany({
-        where: { tokenAddress: tokenAddress.toLowerCase() },
-        data: { raiseToken: raise },
+        await prisma.token.updateMany({
+          where: { tokenAddress: tokenAddress.toLowerCase() },
+          data: { raiseToken: raise },
+        });
       });
     } catch (e) {
       this.logger.warn(
